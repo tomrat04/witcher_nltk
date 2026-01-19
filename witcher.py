@@ -347,44 +347,43 @@ def chart0():
     plt.figure(figsize=(20, 12))
 
     if G1.number_of_nodes() > 0:
-        # Używamy tego samego seeda, żeby układ był w miarę powtarzalny
-        pos = nx.spring_layout(G1, k=2.5, seed=42)
+        pos = nx.spring_layout(G1, k=2.5)
 
-        # Pobieranie kolorów dla węzłów w G1
+        #pobieranie kolorów dla węzłów w G1
         node_colors_list = []
         for node in G1.nodes():
             group = character_groups.get(node)
-            # Jeśli jakiejś postaci nie ma w grupach, dajemy kolor domyślny (szary)
+            #jeśli jakiejś postaci nie ma w grupach, dajemy kolor domyślny (szary)
             color = group_colors.get(group, "#CCCCCC")
             node_colors_list.append(color)
 
-        # Rozmiar węzłów bazujący na centralności c1 (Basic)
-        # Mnożnik 4000 taki sam jak w chart1 dla zachowania skali
+        #rozmiar węzłów bazujący na centralności c1 (Basic)
+        #mnożnik 4000 taki sam jak w chart1 dla zachowania skali
         node_sizes = [c1[n] * 4000 for n in G1.nodes()]
 
-        # Rysowanie węzłów
+        #rysowanie węzłów
         nx.draw_networkx_nodes(G1, pos, node_size=node_sizes, node_color=node_colors_list, edgecolors='black')
 
-        # Rysowanie krawędzi
+        #rysowanie krawędzi
         weights = [G1[u][v]['weight'] for u, v in G1.edges()]
         max_weight = max(weights) if weights else 1
-        # Skalowanie grubości krawędzi
+        #grubości krawędzi
         widths = [(w / max_weight) * 4 + 0.3 for w in weights]
 
         nx.draw_networkx_edges(G1, pos, width=widths, edge_color='gray', alpha=0.4)
 
-        # Etykiety
+        # etykiety
         nx.draw_networkx_labels(G1, pos, font_size=8, font_weight='bold')
 
-        # Legenda (wspólna dla obu wykresów)
+        # legenda (wspólna dla obu wykresów)
         from matplotlib.lines import Line2D
         legend_elements = [Line2D([0], [0], marker='o', color='w', label=key,
                                   markerfacecolor=color, markersize=10, markeredgecolor='black')
                            for key, color in group_colors.items()]
 
-        plt.legend(handles=legend_elements, loc='upper left', title="Grupy Postaci", fontsize='small')
+        plt.legend(handles=legend_elements, loc='upper left', title="Character Groups", fontsize='small')
 
-        plt.title("Sieć Interakcji - Model Podstawowy (Basic)", fontsize=14)
+        plt.title("Interaction Net - Model (Basic)", fontsize=14)
         plt.axis('off')
 
         plt.show()
@@ -393,7 +392,7 @@ def chart0():
 def chart1():
     plt.figure(figsize=(20, 12))
     if G2.number_of_nodes() > 0:
-        pos = nx.spring_layout(G2, k=2.5, seed=42)
+        pos = nx.spring_layout(G2, k=2.5)
 
         #dodajemy kolory dla nodow
         node_colors_list = []
@@ -424,9 +423,9 @@ def chart1():
                               markerfacecolor=color, markersize=10, markeredgecolor='black')
                        for key, color in group_colors.items()]
 
-        plt.legend(handles=legend_elements, loc='upper left', title="Grupy Postaci", fontsize='small')
+        plt.legend(handles=legend_elements, loc='upper left', title="Character Groups", fontsize='small')
 
-        plt.title("Ostateczna Sieć Interakcji (Kolorowanie wg Grup)", fontsize=14)
+        plt.title("Interaction Net - Model (Context)", fontsize=14)
         plt.axis('off')
 
         plt.show()
@@ -465,3 +464,76 @@ def chart3():
 
         plt.tight_layout()
         plt.show()
+
+
+#klastry
+def chart_clusters(original_graph, node_importance_scores, groups_dict, group_colors_dict):
+    #mapowanie postac/grupa
+    char_to_group = {}
+    for group_name, characters in groups_dict.items():
+        for char in characters:
+            char_to_group[char] = group_name
+
+    #graf klastrow
+    G_cluster = nx.Graph()
+
+    #słownik do przechowywania zsumowanej wielkości dla każdej grupy
+    group_sizes_agg = {g: 0.0 for g in groups_dict.keys()}
+
+    #iterujemy po oryginalnych węzłach i sumujemy ich ważność do odpowiedniej grupy
+    for node in original_graph.nodes():
+        if node in char_to_group:
+            group_name = char_to_group[node]
+            group_sizes_agg[group_name] += node_importance_scores.get(node, 0)
+
+    #dodajemy węzły grup do nowego grafu (tylko te, które mają jakąś wielkość)
+    for group, size in group_sizes_agg.items():
+        if size > 0:
+            G_cluster.add_node(group, size=size)
+
+    for u, v, data in original_graph.edges(data=True):
+        if u in char_to_group and v in char_to_group:
+            g1 = char_to_group[u]
+            g2 = char_to_group[v]
+
+            # polaczenia miedzy grupami
+            if g1 != g2:
+                w = data.get('weight', 1)
+
+                if G_cluster.has_edge(g1, g2):
+                    G_cluster[g1][g2]['weight'] += w
+                else:
+                    G_cluster.add_edge(g1, g2, weight=w)
+
+    plt.figure(figsize=(15, 10))
+
+    # k odpowiada za odleglosci miedzy nodami
+    pos = nx.spring_layout(G_cluster, k=3.0)
+
+    node_sizes = [G_cluster.nodes[n]['size'] * 4000 for n in G_cluster.nodes()]
+    node_colors = [group_colors_dict.get(n, '#cccccc') for n in G_cluster.nodes()]
+
+    # rysowanie wezłow
+    nx.draw_networkx_nodes(G_cluster, pos,
+                               node_size=node_sizes,
+                               node_color=node_colors,
+                               edgecolors='black')
+
+    #rysowanie krawędzi (skalowanie grubości)
+    weights = [G_cluster[u][v]['weight'] for u, v in G_cluster.edges()]
+    if weights:
+        max_weight = max(weights)
+        #normalizacja szerokości krawędzi
+        widths = [(w / max_weight) * 10 + 0.5 for w in weights]
+    else:
+        widths = 1
+
+    nx.draw_networkx_edges(G_cluster, pos, width=widths, edge_color='gray', alpha=0.5)
+
+    #etykiety
+    nx.draw_networkx_labels(G_cluster, pos, font_size=10, font_weight='bold')
+
+    plt.title("Cluster Interaction Net (Grouped by Affiliation)", fontsize=16)
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
