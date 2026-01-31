@@ -4,7 +4,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import itertools
 import re
-from collections import deque, Counter
+import random
 
 #pobieram model tokenizacji, aby podzielic tekst na zdania (lub pare zdan)
 nltk.download('punkt')
@@ -140,14 +140,6 @@ def analyze_basic(sentences, patterns):
                 else:
                     G.add_edge(u, v, weight=1)
     return G
-
-
-import re
-import itertools
-import random
-from collections import Counter
-import networkx as nx
-
 
 def analyze_context(sentences, char_map):
     patterns = prepare_patterns(char_map)
