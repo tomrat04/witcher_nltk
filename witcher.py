@@ -4,6 +4,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import itertools
 import re
+from collections import Counter
 import random
 
 #pobieram model tokenizacji, aby podzielic tekst na zdania (lub pare zdan)
@@ -110,41 +111,40 @@ base_characters_map = {
     "Filavandrel": ["filavandrel", "filavandrel aen fidhaill"]
 }
 
-
 def prepare_patterns(char_map):
     patterns = {}
-    local_map = char_map.copy()
-
-    for main_name, aliases in local_map.items():
-        #sortujemy aliasy po długości, aby uniknąć problemów (najdłuższe dopasuj najpierw)
+    for name, aliases in char_map.items():
         sorted_aliases = sorted(aliases, key=len, reverse=True)
-        escaped = [re.escape(a) for a in sorted_aliases]
-        pattern_str = r'\b(' + '|'.join(escaped) + r')\b'
-        patterns[main_name] = re.compile(pattern_str)
+        escaped_aliases = []
+        for a in sorted_aliases:
+            escaped_aliases.append(re.escape(a))
+        
+        pattern_str = r'\b(' + '|'.join(escaped_aliases) + r')\b'
+        patterns[name] = re.compile(pattern_str)
     return patterns
-
 
 def analyze_basic(sentences, patterns):
     G = nx.Graph()
+    edge_counts = Counter()
+    
     for sentence in sentences:
-        found = set()
         s_lower = sentence.lower()
+        found = set()
         for name, pat in patterns.items():
             if pat.search(s_lower):
                 found.add(name)
-
+        
         if len(found) > 1:
-            for u, v in itertools.combinations(sorted(found), 2):
-                if G.has_edge(u, v):
-                    G[u][v]['weight'] += 1
-                else:
-                    G.add_edge(u, v, weight=1)
+            pairs = itertools.combinations(sorted(found), 2)
+            edge_counts.update(pairs)
+            
+    for (u, v), w in edge_counts.items():
+        G.add_edge(u, v, weight=w)
     return G
 
 def analyze_context(sentences, char_map):
     patterns = prepare_patterns(char_map)
 
-    # Mapa aliasów (bez zmian)
     ambiguous_map = {
         r'\bwitcher(:?s)?\b': ["Geralt", "Vesemir", "Lambert", "Eskel", "Coen"],
         r'\bsorceress(?:es)?\b': [
@@ -181,57 +181,49 @@ def analyze_context(sentences, char_map):
         r'\bsquirrels?\b': ["Isengrim Faoiltiarna", "Yaevinn", "Toruviel", "Filavandrel"],
         r'\bsp(?:y|ies)\b': ["Sigismund Dijkstra", "Vattier de Rideaux", "Fenn", "Codringher"]
     }
-
-    amb_patterns = {re.compile(k): v for k, v in ambiguous_map.items()}
-
+    
+    amb_patterns = {}
+    for k, v in ambiguous_map.items():
+        amb_patterns[re.compile(k)] = v
+        
     G = nx.Graph()
+    edge_counts = Counter()
+    n = len(sentences)
 
-    n_sentences = len(sentences)
-
-    for i, sentence in enumerate(sentences):
+    for i in range(n):
+        s_lower = sentences[i].lower()
         found = set()
-        s_lower = sentence.lower()
-
+        
         for name, pat in patterns.items():
             if pat.search(s_lower):
                 found.add(name)
-
-        matches_alias = False
-        active_candidates = set()
-
+        
         for pat, candidates in amb_patterns.items():
             if pat.search(s_lower):
-                matches_alias = True
-                active_candidates.update(candidates)
+                window_sentences = sentences[max(0, i-5) : i+6]
+                window_text = " ".join(window_sentences).lower()
+                
+                best_candidates = []
+                max_hits = 0
+                
+                for cand in candidates:
+                    if cand in patterns:
+                        hits = len(patterns[cand].findall(window_text))
+                        if hits > max_hits:
+                            max_hits = hits
+                            best_candidates = [cand]
+                        elif hits == max_hits and hits > 0:
+                            best_candidates.append(cand)
+                
+                if best_candidates:
+                    found.add(random.choice(best_candidates))
 
-        if matches_alias and active_candidates:
-            start_idx = max(0, i - 5)
-            end_idx = min(n_sentences, i + 6)
+        if len(found) > 1:
+            pairs = itertools.combinations(sorted(found), 2)
+            edge_counts.update(pairs)
 
-            window_text = " ".join(sentences[start_idx:end_idx]).lower()
-
-            candidate_counts = []
-
-            for cand in active_candidates:
-                if cand in patterns:
-                    count = len(patterns[cand].findall(window_text))
-                    if count > 0:
-                        candidate_counts.append((cand, count))
-
-            if candidate_counts:
-                max_val = max(c[1] for c in candidate_counts)
-                best_matches = [c[0] for c in candidate_counts if c[1] == max_val]
-                chosen_one = random.choice(best_matches)
-                found.add(chosen_one)
-
-        found_list = list(found)
-        if len(found_list) > 1:
-            for u, v in itertools.combinations(sorted(found_list), 2):
-                if G.has_edge(u, v):
-                    G[u][v]['weight'] += 1
-                else:
-                    G.add_edge(u, v, weight=1)
-
+    for (u, v), w in edge_counts.items():
+        G.add_edge(u, v, weight=w)
     return G
 
 full_text = ""
