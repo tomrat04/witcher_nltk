@@ -186,22 +186,18 @@ def analyze_context(sentences, char_map):
 
     G = nx.Graph()
 
-    # Iterujemy po indeksach, aby mieć dostęp do sąsiednich zdań
     n_sentences = len(sentences)
 
     for i, sentence in enumerate(sentences):
         found = set()
         s_lower = sentence.lower()
 
-        # 1. Szukaj bezpośrednich dopasowań (imion) w OBECNYM zdaniu
         for name, pat in patterns.items():
             if pat.search(s_lower):
                 found.add(name)
 
-        # 2. Obsługa aliasów z analizą OKNA (p=5: 2 wstecz, obecne, 2 w przód)
-        # Jeśli w obecnym zdaniu jest alias (np. 'king')...
         matches_alias = False
-        active_candidates = set()  # Zbiór kandydatów do sprawdzenia
+        active_candidates = set()
 
         for pat, candidates in amb_patterns.items():
             if pat.search(s_lower):
@@ -209,36 +205,25 @@ def analyze_context(sentences, char_map):
                 active_candidates.update(candidates)
 
         if matches_alias and active_candidates:
-            # Definiujemy zakres okna
             start_idx = max(0, i - 5)
-            end_idx = min(n_sentences, i + 6)  # slice jest 'exclusive', więc i+3 bierze do i+2 włącznie
+            end_idx = min(n_sentences, i + 6)
 
-            # Łączymy zdania z okna w jeden ciąg tekstowy dla łatwiejszego przeszukiwania
             window_text = " ".join(sentences[start_idx:end_idx]).lower()
 
             candidate_counts = []
 
-            # Sprawdzamy wystąpienia konkretnych kandydatów w CAŁYM OKNIE
             for cand in active_candidates:
                 if cand in patterns:
-                    # Używamy findall, aby policzyć ile razy imię pada w oknie
                     count = len(patterns[cand].findall(window_text))
                     if count > 0:
                         candidate_counts.append((cand, count))
 
-            # Logika wyboru: Max, a potem Random
             if candidate_counts:
-                # Znajdź najwyższą liczbę wystąpień
                 max_val = max(c[1] for c in candidate_counts)
-
-                # Wybierz wszystkich, którzy mają ten max (remis)
                 best_matches = [c[0] for c in candidate_counts if c[1] == max_val]
-
-                # Losuj jednego z najlepszych
                 chosen_one = random.choice(best_matches)
                 found.add(chosen_one)
 
-        # 3. Aktualizacja grafu
         found_list = list(found)
         if len(found_list) > 1:
             for u, v in itertools.combinations(sorted(found_list), 2):
